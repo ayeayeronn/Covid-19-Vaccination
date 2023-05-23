@@ -1,0 +1,159 @@
+---
+title: "Covid-19 Vaccination"
+author: "Aaron Banlao"
+date: "9/19/2021"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+
+#loading necessary libraries
+```{r}
+suppressPackageStartupMessages(library("dplyr"))
+suppressPackageStartupMessages(library("lubridate"))
+suppressPackageStartupMessages(library("plotly"))
+suppressPackageStartupMessages(library("ggplot2"))
+library(lubridate)
+library(plotly)
+library(dplyr)
+library(ggplot2)
+```
+
+ 
+ 
+
+<!-- Importing data from online repository -->
+```{r}
+vaccine <- read.csv("https://github.com/ayeayeronn/Covid-19-Vaccination/blob/main/ARCHIVED__COVID-19_Vaccine_Doses_Given_to_San_Franciscans_by_Demographics_Over_Time.csv?raw=true", sep = ",")
+```
+
+```{r}
+head(vaccine)
+dim(vaccine)
+```
+
+<!-- Converting data type from character to datetime -->
+```{r}
+vaccine <- vaccine %>% 
+  mutate(DATE_ADMINISTERED = ymd(DATE_ADMINISTERED))
+```
+
+
+
+```{r}
+class(vaccine$DATE_ADMINISTERED)
+```
+
+# 2)
+Number of first doses before June 15
+```{r}
+vaccine %>% 
+  filter(DATE_ADMINISTERED < "2021-06-15") %>% 
+  summarise(num_new_doses_before_june15 = sum(NEW_1ST_DOSES))
+```
+Number of first doses after June 15
+```{r}
+vaccine %>% 
+  filter(DATE_ADMINISTERED > "2021-06-15") %>% 
+  summarise(num_new_doses_after_june15 = sum(NEW_1ST_DOSES))
+```
+Number of first doses as of September 12
+```{r}
+vaccine %>% 
+  filter(DATE_ADMINISTERED <= "2021-09-12") %>% 
+  summarise(num_new_doses_of_sep12 = sum(NEW_1ST_DOSES))
+```
+
+
+# 3)
+Number of single vs first vs second doses before June 15th
+```{r}
+vaccine %>% 
+  filter(DATE_ADMINISTERED < "2021-06-15") %>% 
+  summarise(total_single_dose_before_June15 = sum(NEW_SINGLE_DOSES), num_new_doses_before_june15 = sum(NEW_1ST_DOSES), num_2nd_doses_before_June15 = sum(NEW_2ND_DOSES))
+```
+Number of single vs first vs second doses after June 15th
+```{r}
+vaccine %>% 
+  filter(DATE_ADMINISTERED > "2021-06-15") %>% 
+  summarise(total_single_dose_after_June15 = sum(NEW_SINGLE_DOSES), num_new_doses_after_june15 = sum(NEW_1ST_DOSES), num_2nd_doses_after_june15 = sum(NEW_2ND_DOSES))
+```
+Number of single vs first vs second doses as of September 12
+```{r}
+vaccine %>% 
+  filter(DATE_ADMINISTERED < "2021-09-12") %>% 
+  summarise(num_single_dose_of_Sep12 = sum(NEW_SINGLE_DOSES), num_new_doses_Of_Sep122021 = sum(NEW_1ST_DOSES), num_2nd_doses_of_Sep12 = sum(NEW_2ND_DOSES))
+```
+
+# 4) 
+<!-- Creating a new month column so that we can use the function group_by to aggregate the number of doses by month-->
+```{r}
+vaccine <- vaccine %>% 
+  filter(DATE_ADMINISTERED < "2021-09-18") %>% 
+  mutate(MONTH = month(DATE_ADMINISTERED)) 
+```
+
+December and January have a low number of vaccinations because only healthcare and essential workers had access to the vaccine. February, March, and April have the highest number of vaccinations because the vaccine distribution has been rolling out on a tier system. As the months go on, it seems like the population getting vaccinated is reaching a plateau.
+
+
+```{r}
+vaccine %>%
+  group_by(MONTH) %>% 
+  mutate(MONTH = month(MONTH, label = TRUE)) %>%
+  summarise(num_of_vaccinations = sum(NEW_1ST_DOSES) + sum(NEW_2ND_DOSES) + sum(NEW_SINGLE_DOSES)) %>% 
+  arrange(desc(num_of_vaccinations))
+```
+# 5)
+<!-- Retrieving the different races and making a new column of strictly races so that later I can use the function group_by the race column -->
+```{r}
+vaccine %>% select(DEMOGRAPHIC_GROUP, DEMOGRAPHIC_SUBGROUP) %>% 
+  filter(DEMOGRAPHIC_GROUP == "Race/Ethnicity") %>% 
+  unique()
+```
+```{r} 
+vaccine <- vaccine %>% 
+  mutate(RACE = ifelse(DEMOGRAPHIC_SUBGROUP %in% c("American Indian or Alaska Native", "Native Hawaiian or Other Pacific Islander", "Asian", "Hispanic or Latino/a, all races", "Multi-Racial", "Other Race", "White", "Black or African American","Unknown"), DEMOGRAPHIC_SUBGROUP, "N/A"))
+  
+```
+<!-- Since there are a lot of overlapping lines within the first doses by race over time, I created an interactive chart where we can toggle certain races on and off so that we can see a better visual of individualized races. -->
+```{r, fig.width=19,fig.height=8}
+vaccine %>% 
+  filter(RACE != "N/A") %>%
+  group_by(RACE, DATE_ADMINISTERED) %>% 
+  summarise(dose = sum(NEW_1ST_DOSES)) %>%  
+  ggplot(., aes(x = DATE_ADMINISTERED, y = dose, color = RACE)) + geom_line() + theme(legend.position = c(0.65, 0.6)) +
+  labs(title = "Number of Covid Vaccines by Race", x = "Date Administered", y = "Total number of Doses")
+ggplotly() %>% layout(width = 1700, height = 600)
+  
+```
+
+# 6) 
+<!-- Combining the 3 vaccine type columns into 1 so that we are able to later summarise and graph in a single plot-->
+```{r}
+suppressPackageStartupMessages(library("reshape"))
+library(reshape)
+combined <- vaccine %>% 
+  select(DATE_ADMINISTERED,NEW_1ST_DOSES, NEW_2ND_DOSES, NEW_SINGLE_DOSES)
+```
+
+```{r}
+combined[] <-lapply(combined, unlist)
+str(combined)
+combined <- melt(combined, "DATE_ADMINISTERED")
+```
+
+```{r, fig.width=19,fig.height=8}
+combined %>% 
+  group_by(DATE_ADMINISTERED, variable) %>% 
+  summarise(num_dose = sum(value)) %>%
+  ggplot(., aes(x=DATE_ADMINISTERED, y=num_dose, color=variable)) + geom_line() +
+  labs(title = "Number of Covid Vaccines by Dose", x = "Date Administered", y = "Total Number of Doses") +
+  scale_color_discrete(name = "Type of Dose",
+                       labels = c("New 1st Doses", "New 2nd Doses", "New Single Doses"))
+ggplotly() %>% layout(width = 1700, height = 600)
+```
+
+
+
+
